@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Gesture Drawing</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror the video */
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            z-index: 4;
+            min-width: 250px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .control-group {
+            margin-bottom: 10px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+
+        .color-palette {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+
+        .color-btn {
+            width: 35px;
+            height: 35px;
+            border: 2px solid #fff;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.1s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .color-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .color-btn.active {
+            transform: scale(1.1);
+            border-color: #ffff00;
+            border-width: 3px;
+        }
+
+        .gradient-btn {
+            background: linear-gradient(45deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #8b00ff);
+        }
+
+        .rainbow-btn {
+            background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #00ffff, #0000ff, #8b00ff);
+        }
+
+        .sunset-btn {
+            background: linear-gradient(45deg, #ff6b35, #f7941d, #fff200, #ff1744);
+        }
+
+        .ocean-btn {
+            background: linear-gradient(45deg, #006994, #0099cc, #66ccff, #99e6ff);
+        }
+
+        .forest-btn {
+            background: linear-gradient(45deg, #2d5016, #4d8b2d, #66b366, #99cc99);
+        }
+
+        .tool-section {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .tool-section:last-child {
+            border-bottom: none;
+        }
+
+        .tool-btn {
+            background: #555;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+
+        .tool-btn:hover {
+            background: #666;
+        }
+
+        .tool-btn.active {
+            background: #4CAF50;
+        }
+
+        #gestureGuide {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 4;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .gesture-item {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+
+        .gesture-emoji {
+            font-size: 18px;
+            margin-right: 8px;
+        }
+
+        #brushSize {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        #status {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 4;
+            font-size: 14px;
+        }
+
+        .gesture-indicator {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 4;
+            font-size: 16px;
+        }
+
+        .palm-info {
+            position: absolute;
+            bottom: 60px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px;
+            border-radius: 5px;
+            z-index: 4;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <video id="video" autoplay muted></video>
+        <canvas id="canvas"></canvas>
+        <canvas id="overlayCanvas"></canvas>
+        
+        <div id="controls">
+            <div class="tool-section">
+                <label>Drawing Tool:</label>
+                <button class="tool-btn active" id="brushTool">🖌️ Brush</button>
+                <button class="tool-btn" id="eraserTool">🧹 Eraser</button>
+            </div>
+            
+            <div class="tool-section">
+                <label>Colors & Gradients:</label>
+                <div class="color-palette">
+                    <!-- Solid Colors -->
+                    <div class="color-btn active" style="background-color: #ff0000" data-color="#ff0000" data-type="solid"></div>
+                    <div class="color-btn" style="background-color: #00ff00" data-color="#00ff00" data-type="solid"></div>
+                    <div class="color-btn" style="background-color: #0000ff" data-color="#0000ff" data-type="solid"></div>
+                    <div class="color-btn" style="background-color: #ffff00" data-color="#ffff00" data-type="solid"></div>
+                    <div class="color-btn" style="background-color: #ff00ff" data-color="#ff00ff" data-type="solid"></div>
+                    <div class="color-btn" style="background-color: #00ffff" data-color="#00ffff" data-type="solid"></div>
+                    <div class="color-btn" style="background-color: #ffffff" data-color="#ffffff" data-type="solid"></div>
+                    <div class="color-btn" style="background-color: #000000" data-color="#000000" data-type="solid"></div>
+                    
+                    <!-- Additional Colors -->
+                    <div class="color-btn" style="background-color: #ff8c00" data-color="#ff8c00" data-type="solid"></div>
+                    <div class="color-btn" style="background-color: #9400d3" data-color="#9400d3" data-type="solid"></div>
+                    <div class="color-btn" style="background-color: #32cd32" data-color="#32cd32" data-type="solid"></div>
+                    <div class="color-btn" style="background-color: #ff1493" data-color="#ff1493" data-type="solid"></div>
+                    
+                    <!-- Gradient Colors -->
+                    <div class="color-btn rainbow-btn" data-gradient="rainbow" data-type="gradient" title="Rainbow"></div>
+                    <div class="color-btn sunset-btn" data-gradient="sunset" data-type="gradient" title="Sunset"></div>
+                    <div class="color-btn ocean-btn" data-gradient="ocean" data-type="gradient" title="Ocean"></div>
+                    <div class="color-btn forest-btn" data-gradient="forest" data-type="gradient" title="Forest"></div>
+                </div>
+                
+                <div style="margin-top: 10px;">
+                    <label style="font-size: 12px;">Custom Color:</label>
+                    <div style="display: flex; gap: 5px; margin-top: 5px;">
+                        <input type="color" id="colorPicker" style="width: 40px; height: 30px; border: none; border-radius: 5px; cursor: pointer;">
+                        <input type="text" id="hexInput" placeholder="#FF0000" style="flex: 1; padding: 5px; border: 1px solid #555; border-radius: 3px; background: #333; color: white; font-size: 12px;">
+                        <button id="applyCustomColor" style="padding: 5px 8px; font-size: 11px;">Apply</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tool-section">
+                <label>Brush Size: <span id="sizeValue">5</span>px</label>
+                <input type="range" id="brushSize" min="1" max="30" value="5">
+            </div>
+            
+            <div class="tool-section">
+                <button id="clearCanvas">🗑️ Clear Canvas</button>
+                <button id="toggleDrawing">✋ Toggle Drawing</button>
+            </div>
+        </div>
+
+        <div id="gestureGuide">
+            <h3>👋 Gesture Guide</h3>
+            <div class="gesture-item"><span class="gesture-emoji">👆</span> Point (Index finger up) = Draw/Erase</div>
+            <div class="gesture-item"><span class="gesture-emoji">🖐️</span> Open Palm = Palm Eraser</div>
+            <div class="gesture-item"><span class="gesture-emoji">✋</span> Any other gesture = Stop Drawing</div>
+            <div class="gesture-item"><span class="gesture-emoji">🖱️</span> Use buttons for tools & colors</div>
+        </div>
+
+        <div class="gesture-indicator" id="gestureIndicator">
+            Gesture: None
+        </div>
+
+        <div class="palm-info" id="palmInfo" style="display: none;">
+            Hand Proximity: 0% | Eraser Size: 0px
+        </div>
+
+        <div id="status">
+            Initializing camera and MediaPipe...
+        </div>
+    </div>
+
+    <!-- MediaPipe Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script>
+        // Global variables
+        let canvas, ctx, video, overlayCanvas, overlayCtx;
+        let isDrawing = false;
+        let currentColor = '#ff0000';
+        let currentGradient = null;
+        let currentColorType = 'solid';
+        let currentSize = 5;
+        let drawingEnabled = true;
+        let currentTool = 'brush'; // 'brush' or 'eraser'
+        let lastPoint = null;
+        let hands, camera;
+        let gradientCache = new Map();
+        let palmEraserActive = false;
+        let palmPosition = null;
+        let palmDistance = 0;
+
+        // Initialize the application
+        async function init() {
+            canvas = document.getElementById('canvas');
+            ctx = canvas.getContext('2d');
+            overlayCanvas = document.getElementById('overlayCanvas');
+            overlayCtx = overlayCanvas.getContext('2d');
+            video = document.getElementById('video');
+            
+            // Set canvas sizes
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            // Initialize controls
+            initControls();
+            
+            // Initialize MediaPipe
+            await initMediaPipe();
+            
+            updateStatus('Ready! Point with your index finger to draw/erase, open palm for palm eraser.');
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            overlayCanvas.width = window.innerWidth;
+            overlayCanvas.height = window.innerHeight;
+            
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            overlayCtx.lineCap = 'round';
+            overlayCtx.lineJoin = 'round';
+        }
+
+        function initControls() {
+            // Tool selection
+            document.getElementById('brushTool').addEventListener('click', () => {
+                currentTool = 'brush';
+                document.querySelector('.tool-btn.active').classList.remove('active');
+                document.getElementById('brushTool').classList.add('active');
+                updateStatus('Brush tool selected');
+            });
+
+            document.getElementById('eraserTool').addEventListener('click', () => {
+                currentTool = 'eraser';
+                document.querySelector('.tool-btn.active').classList.remove('active');
+                document.getElementById('eraserTool').classList.add('active');
+                updateStatus('Eraser tool selected');
+            });
+
+            // Color palette
+            document.querySelectorAll('.color-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (btn.dataset.type === 'solid') {
+                        currentColor = btn.dataset.color;
+                        currentColorType = 'solid';
+                        currentGradient = null;
+                    } else if (btn.dataset.type === 'gradient') {
+                        currentColorType = 'gradient';
+                        currentGradient = btn.dataset.gradient;
+                        currentColor = null;
+                    }
+                    
+                    document.querySelector('.color-btn.active').classList.remove('active');
+                    btn.classList.add('active');
+                    
+                    // Switch to brush tool when selecting color
+                    if (currentTool === 'eraser') {
+                        currentTool = 'brush';
+                        document.querySelector('.tool-btn.active').classList.remove('active');
+                        document.getElementById('brushTool').classList.add('active');
+                    }
+                });
+            });
+
+            // Brush size
+            const brushSize = document.getElementById('brushSize');
+            const sizeValue = document.getElementById('sizeValue');
+            brushSize.addEventListener('input', () => {
+                currentSize = parseInt(brushSize.value);
+                sizeValue.textContent = currentSize;
+            });
+
+            // Custom color controls
+            const colorPicker = document.getElementById('colorPicker');
+            const hexInput = document.getElementById('hexInput');
+            const applyCustomColor = document.getElementById('applyCustomColor');
+
+            // Sync color picker with hex input
+            colorPicker.addEventListener('input', () => {
+                hexInput.value = colorPicker.value.toUpperCase();
+            });
+
+            // Sync hex input with color picker
+            hexInput.addEventListener('input', () => {
+                const hexValue = hexInput.value;
+                if (/^#[0-9A-F]{6}$/i.test(hexValue)) {
+                    colorPicker.value = hexValue;
+                }
+            });
+
+            // Apply custom color
+            function applyCustomColorFunction() {
+                const hexValue = hexInput.value.trim();
+                if (/^#[0-9A-F]{6}$/i.test(hexValue)) {
+                    currentColor = hexValue;
+                    currentColorType = 'solid';
+                    currentGradient = null;
+                    
+                    // Remove active class from all color buttons
+                    document.querySelectorAll('.color-btn').forEach(btn => btn.classList.remove('active'));
+                    
+                    // Switch to brush tool when selecting custom color
+                    if (currentTool === 'eraser') {
+                        currentTool = 'brush';
+                        document.querySelector('.tool-btn.active').classList.remove('active');
+                        document.getElementById('brushTool').classList.add('active');
+                    }
+                    
+                    updateStatus(`Custom color applied: ${hexValue}`);
+                } else {
+                    updateStatus('Invalid hex color! Use format: #FF0000');
+                }
+            }
+
+            applyCustomColor.addEventListener('click', applyCustomColorFunction);
+            
+            // Clear canvas
+            document.getElementById('clearCanvas').addEventListener('click', () => {
+                clearCanvas();
+            });
+
+            // Toggle drawing
+            document.getElementById('toggleDrawing').addEventListener('click', () => {
+                drawingEnabled = !drawingEnabled;
+                document.getElementById('toggleDrawing').textContent = 
+                    drawingEnabled ? '✋ Disable Drawing' : '✋ Enable Drawing';
+                updateStatus(drawingEnabled ? 'Drawing enabled' : 'Drawing disabled');
+            });
+        }
+
+        async function initMediaPipe() {
+            // Initialize MediaPipe Hands
+            hands = new Hands({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            hands.onResults(onResults);
+
+            // Initialize camera
+            camera = new Camera(video, {
+                onFrame: async () => {
+                    await hands.send({image: video});
+                },
+                width: 1280,
+                height: 720
+            });
+
+            await camera.start();
+        }
+
+        function onResults(results) {
+            // Clear overlay canvas each frame
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Calculate palm center and distance
+                const palmCenter = calculatePalmCenter(landmarks);
+                const distance = calculatePalmDistance(landmarks);
+                
+                // Get finger tip positions
+                const indexTip = landmarks[8];
+                const x = (1 - indexTip.x) * canvas.width; // Mirror X coordinate
+                const y = indexTip.y * canvas.height;
+                
+                // Get palm position (mirrored)
+                const palmX = (1 - palmCenter.x) * canvas.width;
+                const palmY = palmCenter.y * canvas.height;
+                
+                // Gesture detection
+                const gesture = detectGesture(landmarks);
+                document.getElementById('gestureIndicator').textContent = `Gesture: ${gesture}`;
+                
+                if (gesture === 'OpenPalm' && drawingEnabled) {
+                    // Palm eraser mode
+                    palmEraserActive = true;
+                    palmPosition = {x: palmX, y: palmY};
+                    palmDistance = distance;
+                    
+                    // Calculate eraser size based on distance (closer = larger, farther = smaller)
+                    // Higher distance value means hand is closer to camera
+                    const eraserSize = Math.max(20, Math.min(200, distance * 800));
+                    
+                    // Draw palm eraser circle on overlay
+                    drawPalmEraserCircle(palmX, palmY, eraserSize);
+                    
+                    // Actually erase at palm position
+                    palmErase(palmX, palmY, eraserSize);
+                    
+                    // Update info display
+                    updatePalmInfo(distance, eraserSize);
+                    
+                } else if (gesture === 'Point' && drawingEnabled) {
+                    // Regular drawing/erasing
+                    palmEraserActive = false;
+                    hidePalmInfo();
+                    
+                    if (currentTool === 'brush') {
+                        drawAtPosition(x, y);
+                    } else if (currentTool === 'eraser') {
+                        eraseAtPosition(x, y);
+                    }
+                } else {
+                    stopDrawing();
+                    palmEraserActive = false;
+                    hidePalmInfo();
+                }
+            } else {
+                stopDrawing();
+                palmEraserActive = false;
+                hidePalmInfo();
+                document.getElementById('gestureIndicator').textContent = 'Gesture: No hand detected';
+            }
+        }
+
+        function detectGesture(landmarks) {
+            // Get finger landmarks
+            const indexTip = landmarks[8];
+            const indexPip = landmarks[6];
+            const middleTip = landmarks[12];
+            const middlePip = landmarks[10];
+            const ringTip = landmarks[16];
+            const ringPip = landmarks[14];
+            const pinkyTip = landmarks[20];
+            const pinkyPip = landmarks[18];
+            const thumbTip = landmarks[4];
+            const thumbPip = landmarks[3];
+            
+            // Check finger extensions
+            const indexExtended = indexTip.y < indexPip.y;
+            const middleExtended = middleTip.y < middlePip.y;
+            const ringExtended = ringTip.y < ringPip.y;
+            const pinkyExtended = pinkyTip.y < pinkyPip.y;
+            const thumbExtended = thumbTip.y < thumbPip.y;
+            
+            // Count extended fingers
+            const extendedFingers = [indexExtended, middleExtended, ringExtended, pinkyExtended, thumbExtended].filter(Boolean).length;
+            
+            // Open palm detection (4 or 5 fingers extended)
+            if (extendedFingers >= 4) {
+                return 'OpenPalm';
+            }
+            
+            // Point gesture (only index extended, others folded)
+            const foldedCount = [!middleExtended, !ringExtended, !pinkyExtended].filter(Boolean).length;
+            if (indexExtended && foldedCount >= 2) {
+                return 'Point';
+            }
+            
+            return 'Other';
+        }
+
+        function createGradient(type, x1, y1, x2, y2) {
+            const cacheKey = `${type}-${x1}-${y1}-${x2}-${y2}`;
+            if (gradientCache.has(cacheKey)) {
+                return gradientCache.get(cacheKey);
+            }
+            
+            let gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+            
+            switch(type) {
+                case 'rainbow':
+                    gradient.addColorStop(0, '#ff0000');
+                    gradient.addColorStop(0.16, '#ff8000');
+                    gradient.addColorStop(0.33, '#ffff00');
+                    gradient.addColorStop(0.5, '#00ff00');
+                    gradient.addColorStop(0.66, '#00ffff');
+                    gradient.addColorStop(0.83, '#0000ff');
+                    gradient.addColorStop(1, '#8000ff');
+                    break;
+                case 'sunset':
+                    gradient.addColorStop(0, '#ff6b35');
+                    gradient.addColorStop(0.33, '#f7941d');
+                    gradient.addColorStop(0.66, '#fff200');
+                    gradient.addColorStop(1, '#ff1744');
+                    break;
+                case 'ocean':
+                    gradient.addColorStop(0, '#006994');
+                    gradient.addColorStop(0.33, '#0099cc');
+                    gradient.addColorStop(0.66, '#66ccff');
+                    gradient.addColorStop(1, '#99e6ff');
+                    break;
+                case 'forest':
+                    gradient.addColorStop(0, '#2d5016');
+                    gradient.addColorStop(0.33, '#4d8b2d');
+                    gradient.addColorStop(0.66, '#66b366');
+                    gradient.addColorStop(1, '#99cc99');
+                    break;
+            }
+            
+            gradientCache.set(cacheKey, gradient);
+            return gradient;
+        }
+
+        function drawAtPosition(x, y) {
+            if (!drawingEnabled) return;
+            
+            if (!isDrawing) {
+                // Start new drawing stroke
+                isDrawing = true;
+                lastPoint = {x, y};
+                
+                // Draw a dot at the starting point
+                ctx.beginPath();
+                if (currentColorType === 'solid') {
+                    ctx.fillStyle = currentColor;
+                } else {
+                    // For gradients, create a small gradient for the dot
+                    const dotGradient = createGradient(currentGradient, x-10, y-10, x+10, y+10);
+                    ctx.fillStyle = dotGradient;
+                }
+                ctx.arc(x, y, currentSize / 2, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (lastPoint) {
+                // Continue drawing stroke
+                ctx.beginPath();
+                ctx.lineWidth = currentSize;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                
+                if (currentColorType === 'solid') {
+                    ctx.strokeStyle = currentColor;
+                } else {
+                    // Create gradient from last point to current point
+                    const strokeGradient = createGradient(currentGradient, lastPoint.x, lastPoint.y, x, y);
+                    ctx.strokeStyle = strokeGradient;
+                }
+                
+                ctx.moveTo(lastPoint.x, lastPoint.y);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+                
+                lastPoint = {x, y};
+            }
+        }
+
+        function eraseAtPosition(x, y) {
+            if (!drawingEnabled) return;
+            
+            if (!isDrawing) {
+                isDrawing = true;
+                lastPoint = {x, y};
+            }
+            
+            // Erase by clearing the area
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.beginPath();
+            ctx.arc(x, y, currentSize, 0, Math.PI * 2);
+            ctx.fill();
+            
+            if (lastPoint) {
+                ctx.beginPath();
+                ctx.lineWidth = currentSize * 2;
+                ctx.lineCap = 'round';
+                ctx.moveTo(lastPoint.x, lastPoint.y);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+            
+            ctx.restore();
+            lastPoint = {x, y};
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            gradientCache.clear(); // Clear gradient cache when canvas is cleared
+        }
+
+        function calculatePalmCenter(landmarks) {
+            // Calculate palm center using wrist and base of fingers
+            const wrist = landmarks[0];
+            const indexBase = landmarks[5];
+            const middleBase = landmarks[9];
+            const ringBase = landmarks[13];
+            const pinkyBase = landmarks[17];
+            
+            const centerX = (wrist.x + indexBase.x + middleBase.x + ringBase.x + pinkyBase.x) / 5;
+            const centerY = (wrist.y + indexBase.y + middleBase.y + ringBase.y + pinkyBase.y) / 5;
+            
+            return {x: centerX, y: centerY};
+        }
+
+        function calculatePalmDistance(landmarks) {
+            // Calculate distance based on hand size (distance between wrist and middle finger tip)
+            const wrist = landmarks[0];
+            const middleTip = landmarks[12];
+            
+            const dx = middleTip.x - wrist.x;
+            const dy = middleTip.y - wrist.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            return distance;
+        }
+
+        function drawPalmEraserCircle(x, y, size) {
+            // Draw the palm eraser circle on overlay canvas
+            overlayCtx.save();
+            
+            // Outer circle (preview)
+            overlayCtx.beginPath();
+            overlayCtx.arc(x, y, size / 2, 0, Math.PI * 2);
+            overlayCtx.strokeStyle = 'rgba(255, 100, 100, 0.8)';
+            overlayCtx.lineWidth = 3;
+            overlayCtx.setLineDash([5, 5]);
+            overlayCtx.stroke();
+            
+            // Inner circle (smaller indicator)
+            overlayCtx.beginPath();
+            overlayCtx.arc(x, y, 5, 0, Math.PI * 2);
+            overlayCtx.fillStyle = 'rgba(255, 100, 100, 0.9)';
+            overlayCtx.fill();
+            
+            // Cross hair
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(x - 10, y);
+            overlayCtx.lineTo(x + 10, y);
+            overlayCtx.moveTo(x, y - 10);
+            overlayCtx.lineTo(x, y + 10);
+            overlayCtx.strokeStyle = 'rgba(255, 100, 100, 0.9)';
+            overlayCtx.lineWidth = 2;
+            overlayCtx.setLineDash([]);
+            overlayCtx.stroke();
+            
+            overlayCtx.restore();
+        }
+
+        function palmErase(x, y, size) {
+            // Erase using palm position
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.beginPath();
+            ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function updatePalmInfo(distance, eraserSize) {
+            const palmInfo = document.getElementById('palmInfo');
+            // Convert distance to a more intuitive representation
+            const proximityPercent = Math.round(distance * 100);
+            palmInfo.textContent = `Hand Proximity: ${proximityPercent}% | Eraser Size: ${Math.round(eraserSize)}px`;
+            palmInfo.style.display = 'block';
+        }
+
+        function hidePalmInfo() {
+            document.getElementById('palmInfo').style.display = 'none';
+        }
+
+        function stopDrawing() {
+            if (isDrawing) {
+                isDrawing = false;
+                lastPoint = null;
+            }
+        }
+
+        function updateStatus(message) {
+            document.getElementById('status').textContent = message;
+        }
+
+        // Start the application
+        init().catch(err => {
+            console.error('Error initializing application:', err);
+            updateStatus('Error: Could not initialize camera or MediaPipe');
+        });
+    </script>
+</body>
+</html>
